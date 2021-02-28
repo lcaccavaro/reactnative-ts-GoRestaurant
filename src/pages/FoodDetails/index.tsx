@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useMemo,
   useLayoutEffect,
+  useReducer,
 } from 'react';
 import { Image } from 'react-native';
 
@@ -38,6 +39,7 @@ import {
   ButtonText,
   IconContainer,
 } from './styles';
+import { acc, Extrapolate } from 'react-native-reanimated';
 
 interface Params {
   id: number;
@@ -73,34 +75,88 @@ const FoodDetails: React.FC = () => {
 
   useEffect(() => {
     async function loadFood(): Promise<void> {
-      // Load a specific food with extras based on routeParams id
+      const response = await api.get(`foods/${routeParams.id}`);
+
+      const food: Food = {
+        ...response.data,
+        formattedPrice: formatValue(response.data.price),
+      };
+
+      const extra: Extra[] = response.data.extras.map((extra: Omit<Extra, 'quantity'>) => (
+        {
+          ...extra,
+          quantity: 0,
+        }
+      ));
+
+      setFood(food);
+      setExtras(extra);
     }
 
     loadFood();
   }, [routeParams]);
 
+  useEffect(() => {
+    async function loadFavorite(): Promise<void> {
+      const response = await api.get('favorites');
+      const favorites: Food[] = response.data;
+
+      const exists = favorites.find(favorite => favorite.id === routeParams.id);
+      if (exists) {
+        setIsFavorite(true);
+      }
+    }
+
+    loadFavorite();
+  }, [routeParams]);
+
   function handleIncrementExtra(id: number): void {
-    // Increment extra quantity
+    const extrasUpdated = extras.map(extra =>
+      extra.id === id ? { ...extra, quantity: extra.quantity + 1 } : extra
+    );
+
+    setExtras(extrasUpdated);
   }
 
   function handleDecrementExtra(id: number): void {
-    // Decrement extra quantity
+    const extrasUpdated = extras.map(extra =>
+      extra.id === id && extra.quantity > 0 ? { ...extra, quantity: extra.quantity - 1 } : extra
+    );
+
+    setExtras(extrasUpdated);
   }
 
   function handleIncrementFood(): void {
-    // Increment food quantity
+    setFoodQuantity(foodQuantity + 1);
   }
 
   function handleDecrementFood(): void {
-    // Decrement food quantity
+    if (foodQuantity == 1) return;
+
+    setFoodQuantity(foodQuantity - 1);
   }
 
   const toggleFavorite = useCallback(() => {
-    // Toggle if food is favorite or not
+    if (isFavorite) {
+      api.delete(`favorites/${food.id}`);
+    }
+    else {
+      api.post('favorites', food);
+    }
+
+    setIsFavorite(!isFavorite);
   }, [isFavorite, food]);
 
   const cartTotal = useMemo(() => {
-    // Calculate cartTotal
+    const extraTotal = extras.reduce((accumulator, extra) => {
+      return accumulator + extra.quantity * extra.value;
+    }, 0);
+
+    const foodTotal = food.price;
+
+    const total = formatValue((foodTotal + extraTotal) * foodQuantity);
+
+    return total;
   }, [extras, food, foodQuantity]);
 
   async function handleFinishOrder(): Promise<void> {
